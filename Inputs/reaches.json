@@ -137,7 +137,7 @@
             "flow_scale": 0.835,
             "elevation": 1742.1376,
             "length": "",
-            "width": "",
+            "bankfull_width": 4.5,
             "height": "",
             "gsd": {
                 "1": 0.0011,
