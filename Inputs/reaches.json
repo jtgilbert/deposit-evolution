@@ -6,7 +6,7 @@
             "flow_scale": 0.78,
             "elevation": 1746.6981,
             "length": 37.5,
-            "width": 4.4,
+            "bankfull_width": 4.4,
             "height": "",
             "gsd": {
                 "1": 0.0016,
@@ -36,6 +36,7 @@
             "elevation": 1746.6932,
             "length":  41,
             "width": 1.5,
+            "bankfull_width": 4.5,
             "height": "",
             "gsd_bed": {
                 "1": 0.0556,
@@ -86,6 +87,7 @@
             "elevation": 1746.259,
             "length": 42,
             "width": 1.5,
+            "bankfull_width": 4.5,
             "height": "",
             "gsd_bed": {
                 "1": 0.0556,
