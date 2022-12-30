@@ -1,10 +1,118 @@
 import pandas as pd
+import numpy as np
 import os
 from tqdm import tqdm
 import json
 import logging
 from dsp_transport.calculate_transport import transport
 from typing import List
+
+
+def exner(d_qs_bed, reach_length, reach_width, porosity):
+    volume = d_qs_bed / ((1 - porosity) * 2650)
+    dz = volume / reach_length * reach_width
+
+    return dz
+
+
+def delta_width(d_qs_wall, reach_length, depth, porosity):
+
+    volume = d_qs_wall / ((1 - porosity) * 2650)
+    dw = volume / ((reach_length * depth) * 2)
+
+    return dw
+
+
+def percentiles(fractions):
+    out_sizes = []
+    d_percentiles = [0.5, 0.84]
+    for p in d_percentiles:
+        cumulative = 0
+        grain_size = None
+        # while cumulative < p:
+        for size, fraction in fractions.items():
+            if cumulative < p:
+                cumulative += fraction
+                grain_size = float(size)
+        for i, size in enumerate(fractions.keys()):
+            if float(size) == grain_size:
+                low_size = float(list(fractions.keys())[i - 1]) - 0.25
+                low_cum = cumulative - float(fractions[list(fractions.keys())[i - 1]])
+                high_size = grain_size - 0.25
+                high_cum = cumulative
+                p_out = ((low_cum / p) * low_size + (p / high_cum) * high_size) / ((low_cum / p) + (p / high_cum))
+                out_sizes.append(p_out)
+
+    return out_sizes[0], out_sizes[1]
+
+
+def sediment_calculations(qsinputs: dict, qsoutputs: dict):
+
+    if len(qsinputs.keys()) != 2:
+        in_vals = [rate[1] for size, rate in qsinputs.items()]
+        tot_in = sum(in_vals)
+    else:
+        in_vals = [[rate[1] for size, rate in qsinputs['bed'].items()],
+                   [rate[1] for size, rate in qsinputs['wall'].items()]]
+        tot_in = sum(in_vals[0]) + sum(in_vals[1])
+
+    if len(qsoutputs.keys()) != 2:
+        out_vals = [rate[1] for size, rate in qsoutputs.items()]
+        tot_out = sum(out_vals)
+        d_qs_bed = tot_in - tot_out
+        d_qs_wall = None
+
+        if len(in_vals) == 2:
+            in_vals_join = [val + in_vals[1][i] for i, val in enumerate(in_vals[0])]
+            d_qs_mass = {key: in_vals_join[i] - out_vals[i] for i, key in enumerate(list(qsoutputs.keys()))}
+        else:
+            d_qs_mass = {key: in_vals[i] - out_vals[i] for i, key in enumerate(list(qsoutputs.keys()))}
+
+    else:
+        d_qs_mass = {'bed': None, 'wall': None}
+        bed_vals = [rate[1] for size, rate in qsoutputs['bed'].items()]
+        tot_bed = sum(bed_vals)
+        wall_vals = [rate[1] for size, rate in qsoutputs['wall'].items()]
+        d_qs_wall = sum(wall_vals)
+        tot_out = tot_bed + d_qs_wall
+        d_qs_bed = tot_in - tot_bed
+
+        if len(in_vals) == 2:
+            in_vals_join = [val + in_vals[1][i] for i, val in enumerate(in_vals[0])]
+            d_qs_mass['bed'] = {key: in_vals_join[i] - bed_vals[i] for i, key in enumerate(list(qsoutputs['bed'].keys()))}
+            d_qs_mass['wall'] = {key: wall_vals[i] for i, key in enumerate(list(qsoutputs['wall'].keys()))}
+
+        else:
+            d_qs_mass['bed'] = {key: in_vals[i] - bed_vals[i] for i, key in enumerate(list(qsoutputs['bed'].keys()))}
+            d_qs_mass['wall'] = {key: wall_vals[i] for i, key in enumerate(list(qsoutputs['wall'].keys()))}
+
+    return d_qs_bed, d_qs_wall, d_qs_mass
+
+
+def update_fractions(fractions_in, d_qs_mass, length, width, thickness=None, depth=None, fractype=None):
+    if fractype is None:
+        ex_volume = length * width * thickness
+        frac_volumes = [frac * ex_volume for size, frac in fractions_in.items()]
+        change_volumes = [sedyield / 2093 for size, sedyield in d_qs_mass.items()]
+    elif fractype == 'bed':
+        ex_volume = length * width * thickness
+        frac_volumes = [frac * ex_volume for size, frac in fractions_in.items()]
+        change_volumes = [sedyield/2093 for size, sedyield in d_qs_mass['bed'].items()]
+    elif fractype == 'wall':
+        ex_volume = length * depth*2 * width
+        frac_volumes = [frac * ex_volume for size, frac in fractions_in.items()]
+        change_volumes = [sedyield / 2093 for size, sedyield in d_qs_mass['wall'].items()]
+    else:
+        raise Exception('fractype must be "bed" or "wall"')
+    dif = [frac + change_volumes[i] for i, frac in enumerate(frac_volumes)]
+    new_volume = ex_volume + sum(change_volumes)
+    fractions_out = {key: dif[i] / new_volume for i, key in enumerate(list(fractions_in.keys()))}
+    total = sum([frac for size, frac in fractions_out.items()])
+
+    if total > 1.1:
+        raise Exception('Fractions sum to more than 1')
+
+    return fractions_out
 
 
 class DepositEvolution:
@@ -35,72 +143,23 @@ class DepositEvolution:
         logging.info('Initializing model setup')
 
         # set up output table
-        # self.out_table =
+        reach = [key for key in self.reaches['reaches'].keys()]
+        timestep = self.q['Datetime']
+        iterables = [reach, timestep]
+        index = pd.MultiIndex.from_product(iterables, names=['Reach', 'DateTime'])
+        zeros = np.zeros((len(reach) * len(timestep), 4))
+        self.out_df = pd.DataFrame(zeros, index=index, columns=['elev', 'width', 'D50', 'yield'])
 
-        # set initial time step and deposit volume in reaches dict
-        self.reaches['timestep'] = self.q.loc[0, 'Datetime']
-
-    def exner(self, d_qs_bed, reach_length, reach_width, porosity):
-
-        volume = d_qs_bed / ((1-porosity)*2650)
-        dz = volume / reach_length * reach_width
-
-        return dz
-
-    def delta_width(self, d_qs_wall, reach_length, depth, porosity):
-
-        volume = d_qs_wall / ((1 - porosity)*2650)
-        dw = volume / ((reach_length * depth) * 2)
-
-        return dw
-
-    def percentiles(self, fractions):
-        out_sizes = []
-        d_percentiles = [0.5, 0.84]
-        for p in d_percentiles:
-            cumulative = 0
-            grain_size = None
-            # while cumulative < p:
-            for size, fraction in fractions.items():
-                if cumulative < p:
-                    cumulative += fraction
-                    grain_size = float(size)
-            for i, size in enumerate(fractions.keys()):
-                if float(size) == grain_size:
-                    low_size = float(list(fractions.keys())[i - 1]) - 0.25
-                    low_cum = cumulative - float(fractions[list(fractions.keys())[i - 1]])
-                    high_size = grain_size - 0.25
-                    high_cum = cumulative
-                    p_out = ((low_cum / p) * low_size + (p / high_cum) * high_size) / ((low_cum / p) + (p / high_cum))
-                    out_sizes.append(p_out)
-
-        return out_sizes[0], out_sizes[1]
+        self.init_elevs = {key: self.reaches['reaches'][key]['elevation'] for key in self.reaches['reaches'].keys()}
 
     def serialize_timestep(self, outfile):
 
         with open(outfile, 'w') as dst:
-            json.dump(dst, self.reaches, indent=4)
+            json.dump(self.reaches, dst, indent=4)
 
-    def sediment_calculations(self, qsinputs: dict, qsoutputs: dict):
-
-        if len(qsinputs.keys()) != 2:
-            tot_in = sum([rate[1] for size, rate in qsinputs.items()])
-        else:
-            tot_in = sum([rate[1] for size, rate in qsinputs['bed'].items()]) + \
-                     sum([rate[1] for size, rate in qsinputs['wall'].items()])
-
-        if len(qsoutputs.keys()) != 2:
-            tot_out = sum([rate[1] for size, rate in qsoutputs.items()])
-            d_qs_bed = tot_in - tot_out
-            d_qs_wall = None
-
-        else:
-            tot_bed = sum([rate[1] for size, rate in qsoutputs['bed'].items()])
-            d_qs_wall = sum([rate[1] for size, rate in qsoutputs['wall'].items()])
-            tot_out = tot_bed + d_qs_wall
-            d_qs_bed = tot_in - tot_bed
-
-        return d_qs_bed, d_qs_wall
+    def save_df(self):
+        logging.info('Saving output csv')
+        self.out_df.to_csv(f'../Outputs/{self.reach_name}_out.csv')
 
     def simulation(self):
         transfer_vals = {
@@ -111,8 +170,12 @@ class DepositEvolution:
         }
 
         for i in tqdm(self.q.index):
+            if i == 2000:
+                print(i)
+            ts = self.q.loc[i, 'Datetime']
+            self.reaches['timestep'] = ts
             q_in = self.q.loc[i, 'Q'] * self.boundary_conditions['flow_scale']
-            width_in = self.w_geom[0] * q_in ** self.w_geom[1]
+            width_in = self.w_geom[0]*self.boundary_conditions['flow_scale'] * q_in ** self.w_geom[1]
             depth_in = self.h_geom[0] * q_in ** self.h_geom[1]
             fractions_in = {float(s): f for s, f in self.boundary_conditions['upstream_gsd'].items()}
             qs_fractions = transport(fractions_in, self.boundary_conditions['upstream_slope'], q_in,
@@ -130,22 +193,28 @@ class DepositEvolution:
                     qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval)
                     transfer_vals['upstream']['Qs_out'] = qs_fractions
                     transfer_vals['deposit_upstream']['Qs_in'] = qs_fractions
+                    self.out_df.loc[('upstream', ts), 'yield'] = sum([trans[1] for size, trans in qs_fractions.items()])
 
-                    d_qs_bed, d_qs_wall = self.sediment_calculations(transfer_vals['upstream']['Qs_in'],
-                                                                     transfer_vals['upstream']['Qs_out'])
-                    dz = self.exner(d_qs_bed, attributes['length'], attributes['bankfull_width'], 0.21)  # porosity from Wu and Wang 2006 Czuba 2018
+                    d_qs_bed, d_qs_wall, d_qs_mass = sediment_calculations(qs_in, qs_fractions)
+                    dz = exner(d_qs_bed, attributes['length'], attributes['bankfull_width'], 0.21)  # porosity from Wu and Wang 2006 Czuba 2018
                     self.reaches['reaches']['upstream']['elevation'] = attributes['elevation'] + dz
+                    self.reaches['reaches']['upstream']['height'] = attributes['height'] + dz
+                    self.out_df.loc[('upstream', ts), 'elev'] = attributes['elevation'] + dz
 
                     # update fractions
-                    d50, d84 = self.percentiles(attributes['gsd'])
+                    self.reaches['reaches']['upstream']['gsd'] = update_fractions(
+                        attributes['gsd'], d_qs_mass, attributes['length'], attributes['bankfull_width'],
+                        attributes['height'])
+                    d50, d84 = percentiles(attributes['gsd'])
                     d50, d84 = (2**-d50)/1000, (2**-d84)/1000
-                    volume = max((d84 / 2), d50) * attributes['length'] * attributes['bankfull_width']
-                    for size, fraction in attributes['gsd'].items():
-                        change_mass = qs_in[float(size)][1] - qs_fractions[float(size)][1]
-                        change_vol = change_mass / 2093
-                        existing_vol = fraction * volume
-                        new_vol = existing_vol + change_vol
-                        self.reaches['reaches']['upstream']['gsd'][size] = new_vol / volume
+                    self.out_df.loc[('upstream', ts), 'D50'] = d50 * 1000
+                    # volume = max((d84 / 2), d50) * attributes['length'] * attributes['bankfull_width']
+                    # for size, fraction in attributes['gsd'].items():
+                    #     change_mass = qs_in[float(size)][1] - qs_fractions[float(size)][1]
+                    #     change_vol = change_mass / 2093
+                    #     existing_vol = fraction * volume
+                    #     new_vol = existing_vol + change_vol
+                    #     self.reaches['reaches']['upstream']['gsd'][size] = new_vol / volume
 
                 if reach == 'deposit_upstream':
                     qs_in = transfer_vals['deposit_upstream']['Qs_in']
@@ -160,43 +229,58 @@ class DepositEvolution:
                                              twod=True)
                     transfer_vals['deposit_upstream']['Qs_out'] = qs_fractions
                     transfer_vals['deposit_downstream']['Qs_in'] = qs_fractions
+                    self.out_df.loc[('deposit_upstream', ts), 'yield'] = \
+                        sum([trans[1] for size, trans in qs_fractions['bed'].items()]) + \
+                        sum([trans[1] for size, trans in qs_fractions['wall'].items()])
 
-                    d_qs_bed, d_qs_wall = self.sediment_calculations(transfer_vals['deposit_upstream']['Qs_in'],
+                    d_qs_bed, d_qs_wall, d_qs_mass = sediment_calculations(transfer_vals['deposit_upstream']['Qs_in'],
                                                                      transfer_vals['deposit_upstream']['Qs_out'])
-                    dz = self.exner(d_qs_bed, attributes['length'], attributes['width'],
+                    dz = exner(d_qs_bed, attributes['length'], attributes['width'],
                                     0.21)  # porosity from Wu and Wang 2006 Czuba 2018
                     self.reaches['reaches']['deposit_upstream']['elevation'] = attributes['elevation'] + dz
-                    dw = self.delta_width(d_qs_wall, attributes['length'], attributes['width'], 0.21)
+                    self.reaches['reaches']['deposit_upstream']['height'] = attributes['height'] + dz
+                    dw = delta_width(d_qs_wall, attributes['length'], attributes['width'], 0.21)
                     self.reaches['reaches']['deposit_upstream']['width'] = attributes['width'] + dw
+                    self.out_df.loc[('deposit_upstream', ts), 'elev'] = attributes['elevation'] + dz
+                    self.out_df.loc[('deposit_upstream', ts), 'width'] = attributes['width'] + dw
 
                     # update fractions
-                    d50_b, d84_b = self.percentiles(attributes['gsd_bed'])
+                    self.reaches['reaches']['deposit_upstream']['gsd_bed'] = update_fractions(
+                        attributes['gsd_bed'], d_qs_mass, attributes['length'], attributes['bankfull_width'],
+                        thickness=attributes['height'], fractype='bed')
+                    depth = self.init_elevs['deposit_upstream'] - self.reaches['reaches']['deposit_upstream']['elevation'] + 0.1  # minimum 10 cm high banks...
+                    width = attributes['bankfull_width']*2 - attributes['width']
+                    self.reaches['reaches']['deposit_upstream']['gsd_wall'] = update_fractions(
+                        attributes['gsd_wall'], d_qs_mass, attributes['length'], width,
+                        depth=depth, fractype='wall')
+                    d50_b, d84_b = percentiles(attributes['gsd_bed'])
                     d50_bed, d84_bed = (2 ** -d50_b)/1000, (2 ** -d84_b)/1000
-                    volume_bed = max((d84_bed / 2), d50_bed) * attributes['length'] * max(attributes['bankfull_width'],
-                                                                                          attributes['width'])
-                    for size, fraction in attributes['gsd_bed'].items():
-                        change_mass = qs_in[float(size)][1] - qs_fractions['bed'][float(size)][1]
-                        change_vol = change_mass / 2093
-                        existing_vol = fraction * volume_bed
-                        new_vol = existing_vol + change_vol
-                        self.reaches['reaches']['deposit_upstream']['gsd_bed'][size] = new_vol / volume_bed
-
-                    d50_w, d84_w = self.percentiles(attributes['gsd_wall'])
-                    d50_wall, d84_wall = (2 ** -d50_w)/1000, (2 ** - d84_w)/1000
-                    volume_wall = (max((d84_wall / 2), d50_wall) * attributes['length'] * depth_in) * 2
-                    for size, fraction in attributes['gsd_wall'].items():
-                        change_mass = -qs_fractions['wall'][float(size)][1]
-                        change_vol = change_mass / 2093  # the change from transport from walls
-                        if dz < 0:
-                            add_volume = (max((d84_wall / 2), d50_wall) * attributes['length'] * -dz) * 2
-                            frac_volume = self.boundary_conditions['deposit_gsd'][size] * add_volume
-                            change_vol = change_vol + frac_volume
-                        else:
-                            add_volume = 0
-                        existing_vol = fraction * volume_wall
-                        new_vol = existing_vol + change_vol
-
-                        self.reaches['reaches']['deposit_upstream']['gsd_wall'][size] = new_vol / (volume_wall + add_volume)
+                    self.out_df.loc[('deposit_upstream', ts), 'D50'] = d50_bed * 1000
+                    # volume_bed = max((d84_bed / 2), d50_bed) * attributes['length'] * max(attributes['bankfull_width'],
+                    #                                                                       attributes['width'])
+                    # for size, fraction in attributes['gsd_bed'].items():
+                    #     change_mass = qs_in[float(size)][1] - qs_fractions['bed'][float(size)][1]
+                    #     change_vol = change_mass / 2093
+                    #     existing_vol = fraction * volume_bed
+                    #     new_vol = existing_vol + change_vol
+                    #     self.reaches['reaches']['deposit_upstream']['gsd_bed'][size] = new_vol / volume_bed
+                    #
+                    # d50_w, d84_w = percentiles(attributes['gsd_wall'])
+                    # d50_wall, d84_wall = (2 ** -d50_w)/1000, (2 ** - d84_w)/1000
+                    # volume_wall = (max((d84_wall / 2), d50_wall) * attributes['length'] * depth_in) * 2
+                    # for size, fraction in attributes['gsd_wall'].items():
+                    #     change_mass = -qs_fractions['wall'][float(size)][1]
+                    #     change_vol = change_mass / 2093  # the change from transport from walls
+                    #     if dz < 0:
+                    #         add_volume = (max((d84_wall / 2), d50_wall) * attributes['length'] * -dz) * 2
+                    #         frac_volume = self.boundary_conditions['deposit_gsd'][size] * add_volume
+                    #         change_vol = change_vol + frac_volume
+                    #     else:
+                    #         add_volume = 0
+                    #     existing_vol = fraction * volume_wall
+                    #     new_vol = existing_vol + change_vol
+                    #
+                    #     self.reaches['reaches']['deposit_upstream']['gsd_wall'][size] = new_vol / (volume_wall + add_volume)
 
                 if reach == 'deposit_downstream':
                     qs_in = transfer_vals['deposit_downstream']['Qs_in']
@@ -211,45 +295,100 @@ class DepositEvolution:
                                              twod=True)
                     transfer_vals['deposit_downstream']['Qs_out'] = qs_fractions
                     transfer_vals['downstream']['Qs_in'] = qs_fractions
+                    self.out_df.loc[('deposit_downstream', ts), 'yield'] = \
+                        sum([trans[1] for size, trans in qs_fractions['bed'].items()]) + \
+                        sum([trans[1] for size, trans in qs_fractions['wall'].items()])
 
-                    d_qs_bed, d_qs_wall = self.sediment_calculations(transfer_vals['deposit_downstream']['Qs_in'],
+                    d_qs_bed, d_qs_wall, d_qs_mass = sediment_calculations(transfer_vals['deposit_downstream']['Qs_in'],
                                                                      transfer_vals['deposit_downstream']['Qs_out'])
-                    dz = self.exner(d_qs_bed, attributes['length'], attributes['width'],
+                    dz = exner(d_qs_bed, attributes['length'], attributes['width'],
                                     0.21)  # porosity from Wu and Wang 2006 Czuba 2018
                     self.reaches['reaches']['deposit_downstream']['elevation'] = attributes['elevation'] + dz
-                    dw = self.delta_width(d_qs_wall, attributes['length'], attributes['width'], 0.21)
+                    self.reaches['reaches']['deposit_downstream']['height'] = attributes['height'] + dz
+                    dw = delta_width(d_qs_wall, attributes['length'], attributes['width'], 0.21)
                     self.reaches['reaches']['deposit_downstream']['width'] = attributes['width'] + dw
+                    self.out_df.loc[('deposit_downstream', ts), 'elev'] = attributes['elevation'] + dz
+                    self.out_df.loc[('deposit_downstream', ts), 'width'] = attributes['width'] + dw
 
                     # update fractions
-                    d50_b, d84_b = self.percentiles(attributes['gsd_bed'])
+                    self.reaches['reaches']['deposit_downstream']['gsd_bed'] = update_fractions(
+                        attributes['gsd_bed'], d_qs_mass, attributes['length'], attributes['bankfull_width'],
+                        thickness=attributes['height'], fractype='bed')
+                    depth = self.init_elevs['deposit_downstream'] - self.reaches['reaches']['deposit_upstream'][
+                        'elevation'] + 0.1  # minimum 10 cm high banks...
+                    width = attributes['bankfull_width'] * 2 - attributes['width']
+                    self.reaches['reaches']['deposit_downstream']['gsd_wall'] = update_fractions(
+                        attributes['gsd_wall'], d_qs_mass, attributes['length'], width,
+                        depth=depth, fractype='wall')
+                    d50_b, d84_b = percentiles(attributes['gsd_bed'])
                     d50_bed, d84_bed = (2 ** -d50_b) / 1000, (2 ** -d84_b) / 1000
-                    volume_bed = max((d84_bed / 2), d50_bed) * attributes['length'] * max(attributes['bankfull_width'],
-                                                                                          attributes['width'])
-                    for size, fraction in attributes['gsd_bed'].items():
-                        change_mass = (qs_in['bed'][float(size)][1] + qs_in['wall'][float(size)][1]) - qs_fractions['bed'][float(size)][1]
-                        change_vol = change_mass / 2093
-                        existing_vol = fraction * volume_bed
-                        new_vol = existing_vol + change_vol
-                        self.reaches['reaches']['deposit_downstream']['gsd_bed'][size] = new_vol / volume_bed
+                    self.out_df.loc[('deposit_downstream', ts), 'D50'] = d50_bed * 1000
+                    # volume_bed = max((d84_bed / 2), d50_bed) * attributes['length'] * max(attributes['bankfull_width'],
+                    #                                                                       attributes['width'])
+                    # for size, fraction in attributes['gsd_bed'].items():
+                    #     change_mass = (qs_in['bed'][float(size)][1] + qs_in['wall'][float(size)][1]) - qs_fractions['bed'][float(size)][1]
+                    #     change_vol = change_mass / 2093
+                    #     existing_vol = fraction * volume_bed
+                    #     new_vol = existing_vol + change_vol
+                    #     self.reaches['reaches']['deposit_downstream']['gsd_bed'][size] = new_vol / volume_bed
+                    #
+                    # d50_w, d84_w = percentiles(attributes['gsd_wall'])
+                    # d50_wall, d84_wall = (2 ** -d50_w) / 1000, (2 ** - d84_w) / 1000
+                    # volume_wall = (max((d84_wall / 2), d50_wall) * attributes['length'] * depth_in) * 2
+                    # for size, fraction in attributes['gsd_wall'].items():
+                    #     change_mass = -qs_fractions['wall'][float(size)][1]
+                    #     change_vol = change_mass / 2093  # the change from transport from walls
+                    #     if dz < 0:
+                    #         add_volume = (max((d84_wall / 2), d50_wall) * attributes['length'] * -dz) * 2
+                    #         frac_volume = self.boundary_conditions['deposit_gsd'][size] * add_volume
+                    #         change_vol = change_vol + frac_volume
+                    #     else:
+                    #         add_volume = 0
+                    #     existing_vol = fraction * volume_wall
+                    #     new_vol = existing_vol + change_vol
+                    #
+                    #     self.reaches['reaches']['deposit_downstream']['gsd_wall'][size] = new_vol / (
+                    #                 volume_wall + add_volume)
 
-                    d50_w, d84_w = self.percentiles(attributes['gsd_wall'])
-                    d50_wall, d84_wall = (2 ** -d50_w) / 1000, (2 ** - d84_w) / 1000
-                    volume_wall = (max((d84_wall / 2), d50_wall) * attributes['length'] * depth_in) * 2
-                    for size, fraction in attributes['gsd_wall'].items():
-                        change_mass = -qs_fractions['wall'][float(size)][1]
-                        change_vol = change_mass / 2093  # the change from transport from walls
-                        if dz < 0:
-                            add_volume = (max((d84_wall / 2), d50_wall) * attributes['length'] * -dz) * 2
-                            frac_volume = self.boundary_conditions['deposit_gsd'][size] * add_volume
-                            change_vol = change_vol + frac_volume
-                        else:
-                            add_volume = 0
-                        existing_vol = fraction * volume_wall
-                        new_vol = existing_vol + change_vol
+                if reach == 'downstream':
+                    qs_in = transfer_vals['downstream']['Qs_in']
+                    q_in = self.q.loc[i, 'Q'] * attributes['flow_scale']
+                    width_in = self.w_geom[0] * q_in ** self.w_geom[1]
+                    depth_in = self.h_geom[0] * q_in ** self.h_geom[1]
+                    fractions_in = {float(s): f for s, f in attributes['gsd'].items()}
+                    slope = self.boundary_conditions['downstream_slope']
+                    qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval)
+                    transfer_vals['downstream']['Qs_out'] = qs_fractions
+                    # transfer_vals['deposit_upstream']['Qs_in'] = qs_fractions
+                    self.out_df.loc[('downstream', ts), 'yield'] = sum([trans[1] for size, trans in qs_fractions.items()])
+                    logging.info(f'Datetime: {ts}, Flow: {q_in}, Sediment Yield: {sum([trans[1] for size, trans in qs_fractions.items()])}')
 
-                        self.reaches['reaches']['deposit_downstream']['gsd_wall'][size] = new_vol / (
-                                    volume_wall + add_volume)
+                    d_qs_bed, d_qs_wall, d_qs_mass = sediment_calculations(transfer_vals['downstream']['Qs_in'],
+                                                                transfer_vals['downstream']['Qs_out'])
+                    dz = exner(d_qs_bed, attributes['length'], attributes['bankfull_width'], 0.21)  # porosity from Wu and Wang 2006 Czuba 2018
+                    self.reaches['reaches']['downstream']['elevation'] = attributes['elevation'] + dz
+                    self.reaches['reaches']['downstream']['height'] = attributes['height'] + dz
+                    self.out_df.loc[('downstream', ts), 'elev'] = attributes['elevation'] + dz
 
+                    # update fractions
+                    self.reaches['reaches']['downstream']['gsd'] = update_fractions(
+                        attributes['gsd'], d_qs_mass, attributes['length'], attributes['bankfull_width'],
+                        attributes['height'])
+                    d50, d84 = percentiles(attributes['gsd'])
+                    d50, d84 = (2**-d50)/1000, (2**-d84)/1000
+                    self.out_df.loc[('downstream', ts), 'D50'] = d50 * 1000
+                    # volume = max((d84 / 2), d50) * attributes['length'] * attributes['bankfull_width']
+                    # for size, fraction in attributes['gsd'].items():
+                    #     change_mass = (qs_in['bed'][float(size)][1] + qs_in['wall'][float(size)][1]) - qs_fractions[float(size)][1]
+                    #     change_vol = change_mass / 2093
+                    #     existing_vol = fraction * volume
+                    #     new_vol = existing_vol + change_vol
+                    #     self.reaches['reaches']['downstream']['gsd'][size] = new_vol / volume
+
+            #if i == 1798:
+            #    self.serialize_timestep(f'../Outputs/{self.reach_name}_1798.json')
+
+        self.save_df()
 
 
 
