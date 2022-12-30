@@ -7,7 +7,6 @@
             "elevation": 1746.6981,
             "length": 37.5,
             "bankfull_width": 4.4,
-            "height": "",
             "gsd": {
                 "1": 0.0016,
                 "0": 0.0038,
@@ -35,9 +34,8 @@
             "flow_scale": 0.79,
             "elevation": 1746.6932,
             "length":  41,
-            "width": 1.5,
+            "width": 1,
             "bankfull_width": 4.5,
-            "height": "",
             "gsd_bed": {
                 "1": 0.0556,
                 "0": 0.0556,
@@ -86,9 +84,8 @@
             "flow_scale": 0.83,
             "elevation": 1746.259,
             "length": 42,
-            "width": 1.5,
+            "width": 1,
             "bankfull_width": 4.5,
-            "height": "",
             "gsd_bed": {
                 "1": 0.0556,
                 "0": 0.0556,
@@ -136,9 +133,8 @@
         "downstream": {
             "flow_scale": 0.835,
             "elevation": 1742.1376,
-            "length": "",
+            "length": 50,
             "bankfull_width": 4.5,
-            "height": "",
             "gsd": {
                 "1": 0.0011,
                 "0": 0.0017,
