@@ -1,6 +1,7 @@
 {
     "upstream_slope": 0.03,
     "flow_scale": 0.77,
+    "bankfull_width": 4.5,
     "upstream_gsd": {
         "1": 0.0016,
         "0": 0.0038,

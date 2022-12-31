@@ -78,7 +78,7 @@
             },
             "Qs_in": "",
             "Qs_out_bed": "",
-            "Qs_out_bank": ""
+            "Qs_out_wall": ""
     },
         "deposit_downstream": {
             "flow_scale": 0.83,
@@ -128,7 +128,7 @@
             },
             "Qs_in": "",
             "Qs_out_bed": "",
-            "Qs_out_bank": ""
+            "Qs_out_wall": ""
     },
         "downstream": {
             "flow_scale": 0.835,
