@@ -222,7 +222,7 @@ class DepositEvolution:
         }
 
         for i in tqdm(self.q.index):
-            if i == 2001:
+            if i == 47:
                 print(i)
             ts = self.q.loc[i, 'Datetime']
             self.reaches['timestep'] = ts
@@ -293,7 +293,7 @@ class DepositEvolution:
                                     'wall': {float(s): f for s, f in attributes['gsd_wall'].items()}}
 
                     qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval,
-                                             twod=True)
+                                             twod=True, lwd_factor=1)
                     transfer_vals['deposit_upstream']['Qs_out'] = qs_fractions
                     transfer_vals['deposit_downstream']['Qs_in'] = qs_fractions
                     self.out_df.loc[('deposit_upstream', ts), 'yield'] = \
@@ -331,6 +331,7 @@ class DepositEvolution:
                     angle = atan(incision / attributes['width'] + dw)
                     if angle > 0.35:  # if the angle to the center of channel is 20 degrees its probably 25-30 at bank
                         self.incision_feedback("deposit_upstream", incision)
+                        logging.info(f'bank slumping feedback at timestep {i}')
 
                 if reach == 'deposit_downstream':
                     qs_in = transfer_vals['deposit_downstream']['Qs_in']
@@ -345,14 +346,14 @@ class DepositEvolution:
                     fractions = {float(s): f for s, f in attributes['gsd_bed'].items()}
                     d50, d84 = percentiles(attributes['gsd_bed'])
                     d50, d84 = (2 ** -d50) / 1000, (2 ** -d84) / 1000
-                    self.out_df.loc[('upstream', ts), 'D50'] = d50 * 1000
+                    self.out_df.loc[('deposit_downstream', ts), 'D50'] = d50 * 1000
                     active_volume = attributes['length'] * attributes['bankfull_width'] * d50
                     fractions_updated = update_fractions_in(fractions, qs_in, active_volume, 0.21)
                     fractions_in = {'bed': {float(s): f for s, f in fractions_updated.items()},
                                     'wall': {float(s): f for s, f in attributes['gsd_wall'].items()}}
 
                     qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval,
-                                             twod=True)
+                                             twod=True, lwd_factor=1)
                     transfer_vals['deposit_downstream']['Qs_out'] = qs_fractions
                     transfer_vals['downstream']['Qs_in'] = qs_fractions
                     self.out_df.loc[('deposit_downstream', ts), 'yield'] = \
@@ -377,8 +378,8 @@ class DepositEvolution:
                     self.out_df.loc[('deposit_downstream', ts), 'elev'] = attributes['elevation'] + dz
                     self.out_df.loc[('deposit_downstream', ts), 'width'] = attributes['width'] + dw
 
-                    logging.info(f"incision: {self.init_elevs['deposit_downstream'] - attributes['elevation'] + dz}; "
-                                 f"\widening: {attributes['width'] + dw - 1}")
+                    #logging.info(f"incision: {self.init_elevs['deposit_downstream'] - attributes['elevation'] + dz}; "
+                    #             f"\widening: {attributes['width'] + dw - 1}")
 
                     # update fractions
                     d50_bed, d84_bed = percentiles(attributes['gsd_bed'])
@@ -413,7 +414,8 @@ class DepositEvolution:
                     active_volume = attributes['length'] * attributes['bankfull_width'] * d50
                     fractions_in = update_fractions_in(fractions, qs_in, active_volume, 0.21)
 
-                    qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval)
+                    qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval,
+                                             lwd_factor=1)
                     transfer_vals['downstream']['Qs_out'] = qs_fractions
                     self.out_df.loc[('downstream', ts), 'yield'] = sum([trans[1] for size, trans in qs_fractions.items()])
                     self.reaches['reaches']['downstream']['Qs_in'] = sum([trans[1] for size, trans in
@@ -435,7 +437,7 @@ class DepositEvolution:
                     self.reaches['reaches']['downstream']['gsd'] = update_fractions_out(fractions_in, qs_fractions,
                                                                                       active_volume, 0.21)
 
-            if i in [10, 50, 100, 1000, 2000]:
+            if i in [10, 50, 500, 1000, 1500]:
                 self.serialize_timestep(f'../Outputs/{self.reach_name}_{i}.json')
 
         self.save_df()
@@ -444,8 +446,8 @@ class DepositEvolution:
 
 b_c = '../Inputs/boundary_conditions.json'
 r_a = '../Inputs/reaches.json'
-dis = '../Inputs/Woods_Q.csv'
-t_i = 900
+dis = '../Inputs/Woods_Q_1hr.csv'
+t_i = 3600
 whg = [5.947, 0.115]
 dhg = [0.283, 0.402]
 r_n = 'Woods'
