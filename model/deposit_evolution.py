@@ -168,8 +168,8 @@ class DepositEvolution:
         timestep = self.q['Datetime']
         iterables = [reach, timestep]
         index = pd.MultiIndex.from_product(iterables, names=['Reach', 'DateTime'])
-        zeros = np.zeros((len(reach) * len(timestep), 4))
-        self.out_df = pd.DataFrame(zeros, index=index, columns=['elev', 'width', 'D50', 'yield'])
+        zeros = np.zeros((len(reach) * len(timestep), 5))
+        self.out_df = pd.DataFrame(zeros, index=index, columns=['elev', 'width', 'D50', 'slope', 'yield'])
 
         self.init_elevs = {key: self.reaches['reaches'][key]['elevation'] for key in self.reaches['reaches'].keys()}
 
@@ -222,8 +222,6 @@ class DepositEvolution:
         }
 
         for i in tqdm(self.q.index):
-            if i == 47:
-                print(i)
             ts = self.q.loc[i, 'Datetime']
             self.reaches['timestep'] = ts
             q_in = self.q.loc[i, 'Q'] * self.boundary_conditions['flow_scale']
@@ -232,8 +230,9 @@ class DepositEvolution:
                 width_in = self.boundary_conditions['bankfull_width']
             depth_in = self.h_geom[0]*self.boundary_conditions['flow_scale'] * q_in ** self.h_geom[1]
             fractions_in = {float(s): f for s, f in self.boundary_conditions['upstream_gsd'].items()}
-            qs_fractions = transport(fractions_in, self.boundary_conditions['upstream_slope'], q_in,
-                                        depth_in, width_in, self.time_interval)
+            slope = (self.boundary_conditions['upstream_elev']-self.reaches['reaches']['upstream']['elevation']) / \
+                    self.boundary_conditions['upstream_length']
+            qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval)
             transfer_vals['upstream']['Qs_in'] = qs_fractions
 
             for reach, attributes in self.reaches['reaches'].items():
@@ -246,6 +245,7 @@ class DepositEvolution:
                     depth_in = self.h_geom[0]*attributes['flow_scale'] * q_in ** self.h_geom[1]
                     slope = (attributes['elevation'] - self.reaches['reaches']['deposit_upstream']['elevation']) / \
                             attributes['length']
+                    self.out_df.loc[('upstream', ts), 'slope'] = slope
 
                     fractions = {float(s): f for s, f in attributes['gsd'].items()}
                     d50, d84 = percentiles(attributes['gsd'])
@@ -276,12 +276,13 @@ class DepositEvolution:
                 if reach == 'deposit_upstream':
                     qs_in = transfer_vals['deposit_upstream']['Qs_in']
                     q_in = self.q.loc[i, 'Q'] * attributes['flow_scale']
-                    width_in = attributes['width']
+                    width_in = min(attributes['width'], self.w_geom[0]*attributes['flow_scale'] * q_in ** self.w_geom[1])
                     if width_in > self.boundary_conditions['bankfull_width']:
                         width_in = self.boundary_conditions['bankfull_width']
                     depth_in = self.h_geom[0]*attributes['flow_scale'] * q_in ** self.h_geom[1]
                     slope = (attributes['elevation'] - self.reaches['reaches']['deposit_downstream']['elevation']) / \
                             attributes['length']
+                    self.out_df.loc[('deposit_upstream', ts), 'slope'] = slope
 
                     fractions = {float(s): f for s, f in attributes['gsd_bed'].items()}
                     d50, d84 = percentiles(attributes['gsd_bed'])
@@ -336,12 +337,13 @@ class DepositEvolution:
                 if reach == 'deposit_downstream':
                     qs_in = transfer_vals['deposit_downstream']['Qs_in']
                     q_in = self.q.loc[i, 'Q'] * attributes['flow_scale']
-                    width_in = attributes['width']
+                    width_in = min(attributes['width'], self.w_geom[0]*attributes['flow_scale'] * q_in ** self.w_geom[1])
                     if width_in > self.boundary_conditions['bankfull_width']:
                         width_in = self.boundary_conditions['bankfull_width']
                     depth_in = self.h_geom[0] * attributes['flow_scale'] * q_in ** self.h_geom[1]
                     slope = (attributes['elevation'] - self.reaches['reaches']['downstream']['elevation']) / \
                             attributes['length']
+                    self.out_df.loc[('deposit_downstream', ts), 'slope'] = slope
 
                     fractions = {float(s): f for s, f in attributes['gsd_bed'].items()}
                     d50, d84 = percentiles(attributes['gsd_bed'])
@@ -405,7 +407,8 @@ class DepositEvolution:
                     if width_in > attributes['bankfull_width']:
                         width_in = attributes['bankfull_width']
                     depth_in = self.h_geom[0]*attributes['flow_scale'] * q_in ** self.h_geom[1]
-                    slope = self.boundary_conditions['downstream_slope']
+                    slope = (attributes['elevation'] - self.boundary_conditions['downstream_elev']) / attributes['length']
+                    self.out_df.loc[('downstream', ts), 'slope'] = slope
 
                     fractions = {float(s): f for s, f in attributes['gsd'].items()}
                     d50, d84 = percentiles(attributes['gsd'])
@@ -437,8 +440,8 @@ class DepositEvolution:
                     self.reaches['reaches']['downstream']['gsd'] = update_fractions_out(fractions_in, qs_fractions,
                                                                                       active_volume, 0.21)
 
-            #if i in [10, 50, 500, 1000, 1500]:
-            #    self.serialize_timestep(f'../Outputs/{self.reach_name}_{i}.json')
+            if i in [3000,6000,9000,12000,15000,18000,21000]:
+                self.serialize_timestep(f'../Outputs/{self.reach_name}_{i}.json')
 
         self.save_df()
 
