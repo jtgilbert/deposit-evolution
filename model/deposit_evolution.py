@@ -437,8 +437,8 @@ class DepositEvolution:
                     self.reaches['reaches']['downstream']['gsd'] = update_fractions_out(fractions_in, qs_fractions,
                                                                                       active_volume, 0.21)
 
-            if i in [10, 50, 500, 1000, 1500]:
-                self.serialize_timestep(f'../Outputs/{self.reach_name}_{i}.json')
+            #if i in [10, 50, 500, 1000, 1500]:
+            #    self.serialize_timestep(f'../Outputs/{self.reach_name}_{i}.json')
 
         self.save_df()
 
@@ -446,7 +446,7 @@ class DepositEvolution:
 
 b_c = '../Inputs/boundary_conditions.json'
 r_a = '../Inputs/reaches.json'
-dis = '../Inputs/Woods_Q_1hr.csv'
+dis = '../Inputs/Woods_Q_2012_2019_1hr.csv'
 t_i = 3600
 whg = [5.947, 0.115]
 dhg = [0.283, 0.402]
