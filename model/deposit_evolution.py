@@ -254,7 +254,13 @@ class DepositEvolution:
                     active_volume = attributes['length'] * attributes['bankfull_width'] * d50
                     fractions_in = update_fractions_in(fractions, qs_in, active_volume, 0.21)
 
-                    qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval)
+                    if slope < 0:
+                        qs_fractions = {1.0: [0., 0.], 0.0: [0., 0.], -1.0: [0., 0.], -2.0: [0., 0.], -2.5: [0., 0.],
+                                        -3.0: [0., 0.], -3.5: [0., 0.], -4.0: [0., 0.], -4.5: [0., 0.],
+                                        -5.0: [0.0, 0.0], -5.5: [0., 0.], -6.0: [0., 0.], -6.5: [0., 0.],
+                                        -7.0: [0., 0.], -7.5: [0., 0.], -8.0: [0., 0.], -8.5: [0., 0.], -9.0: [0., 0.]}
+                    else:
+                        qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval)
                     transfer_vals['upstream']['Qs_out'] = qs_fractions
                     transfer_vals['deposit_upstream']['Qs_in'] = qs_fractions
                     self.out_df.loc[('upstream', ts), 'yield'] = sum([trans[1] for size, trans in qs_fractions.items()])
@@ -440,20 +446,22 @@ class DepositEvolution:
                     self.reaches['reaches']['downstream']['gsd'] = update_fractions_out(fractions_in, qs_fractions,
                                                                                       active_volume, 0.21)
 
-            if i in [3000,6000,9000,12000,15000,18000,21000]:
-                self.serialize_timestep(f'../Outputs/{self.reach_name}_{i}.json')
+            # if i in [3000,6000,9000,12000,15000,18000,21000]:
+            #     self.serialize_timestep(f'../Outputs/{self.reach_name}_{i}.json')
 
         self.save_df()
 
 
 
-b_c = '../Inputs/boundary_conditions.json'
-r_a = '../Inputs/reaches.json'
-dis = '../Inputs/Woods_Q_2012_2019_1hr.csv'
-t_i = 3600
-whg = [5.947, 0.115]
-dhg = [0.283, 0.402]
-r_n = 'Woods'
+b_c = '../Inputs/boundary_conditions_sc.json'
+r_a = '../Inputs/reaches_sc.json'
+dis = '../Inputs/SleepingChild_Q.csv'
+t_i = 1800
+whg_woods = [5.947, 0.115]
+dhg_woods = [0.283, 0.402]
+whg_sc = [11.6, 0.109]  # check on this
+dhg_sc = [0.131, 0.6]  # check on this
+r_n = 'SleepingChild'
 
-inst = DepositEvolution(b_c, r_a, dis, t_i, whg, dhg, r_n)
+inst = DepositEvolution(b_c, r_a, dis, t_i, whg_sc, dhg_sc, r_n)
 inst.simulation()
