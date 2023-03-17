@@ -46,7 +46,7 @@
     "downstream_elev": 1740.1876,
     "reaches": {
         "deposit_upstream": {
-            "min_elev": 1745.3856,
+            "pre_elev": 1745.3856,
             "gsd": {
                 "1": 0.0006,
                 "0": 0.0025,
@@ -69,8 +69,8 @@
             }
         },
         "deposit_downstream": {
-            "min_elev": 1743.8686,
-            "gds": {
+            "pre_elev": 1743.8686,
+            "gsd": {
                 "1": 0.0006,
                 "0": 0.0025,
                 "-1": 0.0034,
