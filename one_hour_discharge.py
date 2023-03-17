@@ -1,6 +1,6 @@
 import pandas as pd
 
-df = pd.read_csv('Inputs/SleepingChildQ_2002_2020_15min.csv')
+df = pd.read_csv('Inputs/SleepingChildQ_2001_2008_15min.csv')
 
 out_datetime = []
 out_q = []
@@ -13,4 +13,4 @@ for i in df.index:
 data = {'Datetime': out_datetime, 'Q': out_q}
 out_df = pd.DataFrame(data=data)
 
-out_df.to_csv('Inputs/SleepingChild_Q_2002_2020_1hr.csv')
+out_df.to_csv('Inputs/SleepingChildQ_2001_2008_1hr.csv')
