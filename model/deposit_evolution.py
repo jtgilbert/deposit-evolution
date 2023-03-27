@@ -181,7 +181,7 @@ def update_fractions_out(fractions, qs_out, active_volume, porosity):
     return fractions_out
 
 
-def update_bed_fractions(fractions, qs_in, qs_out, active_volume, porosity):
+def update_bed_fractions(fractions, qs_in, qs_out, active_volume, porosity, logger=None):
 
     # get existin mass of each fraction in active layer
     existing_mass = {phi: frac * active_volume * (1-porosity) * 2650 for phi, frac in fractions.items()}
@@ -191,6 +191,9 @@ def update_bed_fractions(fractions, qs_in, qs_out, active_volume, porosity):
 
     # find the new mass of each fraction and convert to new fractions
     new_mass = {phi: existing_mass[phi] + d_qs[phi] for phi in existing_mass.keys()}
+    if sum(new_mass.values()) < 1e-10:
+        #logger.info(f'')
+        raise Exception('new mass getting too small')
     fractions_out = {phi: new_mass[phi] / sum(new_mass.values()) for phi in new_mass.keys()}
 
     # adjust such that 0.001 is the minimum fraction
@@ -378,7 +381,10 @@ class DepositEvolution:
                     d50, d84 = (2 ** -d50) / 1000, (2 ** -d84) / 1000
                     self.out_df.loc[('upstream', ts), 'D50'] = d50 * 1000
                     if d50 > 0.002:
-                        active_layer = 7968 * 0.038**2.61 * d50  # from Wilcock 1997
+                        tau_star = (9810 * depth_in * slope) / (1650 * 9.81 * d50)
+                        active_layer = 7968 * tau_star**2.61 * d50  # from Wilcock 1997
+                        if active_layer > 2 * d84:
+                            active_layer = 2 * d84
                     else:
                         active_layer = 3 * d50
                     if attributes['elevation'] - active_layer < self.boundary_conditions['min_elev']['upstream']:
@@ -390,7 +396,7 @@ class DepositEvolution:
                     if slope < 0:
                         qs_fractions = {1.0: [0., 0.], 0.0: [0., 0.], -1.0: [0., 0.], -2.0: [0., 0.], -2.5: [0., 0.],
                                         -3.0: [0., 0.], -3.5: [0., 0.], -4.0: [0., 0.], -4.5: [0., 0.],
-                                        -5.0: [0.0, 0.0], -5.5: [0., 0.], -6.0: [0., 0.], -6.5: [0., 0.],
+                                        -5.0: [0., 0.], -5.5: [0., 0.], -6.0: [0., 0.], -6.5: [0., 0.],
                                         -7.0: [0., 0.], -7.5: [0., 0.], -8.0: [0., 0.], -8.5: [0., 0.], -9.0: [0., 0.]}
                     else:
                         qs_fractions = transport(fractions, slope, q_in, depth_in, width_in, self.time_interval,
@@ -405,9 +411,6 @@ class DepositEvolution:
                         if frac > qs_in[size] + max_bed_recr[size]:
                             qs_kg[size] = qs_in[size] + max_bed_recr[size]
 
-                    if ts == '5/3/2021 16:00':
-                        print(ts)
-
                     transfer_vals['upstream']['Qs_out'] = qs_kg
                     transfer_vals['deposit_upstream']['Qs_in'] = qs_kg
                     self.out_df.loc[('upstream', ts), 'yield'] = sum(qs_kg.values())
@@ -420,7 +423,8 @@ class DepositEvolution:
                     self.out_df.loc[('upstream', ts), 'elev'] = attributes['elevation'] + dz
 
                     # update bed fractions
-                    self.reaches['reaches']['upstream']['gsd'] = update_bed_fractions(fractions, qs_in, qs_kg, active_volume, 0.21)
+                    if active_volume > 0:
+                        self.reaches['reaches']['upstream']['gsd'] = update_bed_fractions(fractions, qs_in, qs_kg, active_volume, 0.21)
 
                 if reach == 'deposit_upstream':
                     qs_in = transfer_vals['deposit_upstream']['Qs_in']
@@ -441,7 +445,10 @@ class DepositEvolution:
                     d50, d84 = (2 ** -d50) / 1000, (2 ** -d84) / 1000
                     self.out_df.loc[('deposit_upstream', ts), 'D50'] = d50 * 1000
                     if d50 > 0.002:
-                        active_layer = 7968 * 0.038 ** 2.61 * d50  # from Wilcock 1997
+                        tau_star = (9810 * depth_in * slope) / (1650 * 9.81 * d50)
+                        active_layer = 7968 * tau_star ** 2.61 * d50  # from Wilcock 1997
+                        if active_layer > 2 * d84:
+                            active_layer = 2 * d84
                     else:
                         active_layer = 3 * d50
                     if attributes['elevation'] - active_layer < self.boundary_conditions['min_elev']['deposit_upstream']:
@@ -459,7 +466,7 @@ class DepositEvolution:
                                         -7.0: [0., 0.], -7.5: [0., 0.], -8.0: [0., 0.], -8.5: [0., 0.], -9.0: [0., 0.]},
                                         'wall': {1.0: [0., 0.], 0.0: [0., 0.], -1.0: [0., 0.], -2.0: [0., 0.], -2.5: [0., 0.],
                                         -3.0: [0., 0.], -3.5: [0., 0.], -4.0: [0., 0.], -4.5: [0., 0.],
-                                        -5.0: [0.0, 0.0], -5.5: [0., 0.], -6.0: [0., 0.], -6.5: [0., 0.],
+                                        -5.0: [0., 0.], -5.5: [0., 0.], -6.0: [0., 0.], -6.5: [0., 0.],
                                         -7.0: [0., 0.], -7.5: [0., 0.], -8.0: [0., 0.], -8.5: [0., 0.], -9.0: [0., 0.]}}
                     else:
                         qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval,
@@ -500,10 +507,12 @@ class DepositEvolution:
                     self.out_df.loc[('deposit_upstream', ts), 'elev'] = attributes['elevation'] + dz
                     self.out_df.loc[('deposit_upstream', ts), 'width'] = attributes['width'] + dw
 
-                    self.reaches['reaches']['deposit_upstream']['gsd_bed'] = update_bed_fractions(
-                        fractions_in['bed'], qs_in, qs_kg['bed'], active_volume, 0.21)
-                    self.reaches['reaches']['deposit_upstream']['gsd_wall'] = update_fractions_out(
-                        fractions_in['wall'], qs_kg['wall'], active_volume_wall, 0.21)
+                    if active_volume > 0:
+                        self.reaches['reaches']['deposit_upstream']['gsd_bed'] = update_bed_fractions(
+                            fractions_in['bed'], qs_in, qs_kg['bed'], active_volume, 0.21)
+                    if active_volume_wall > 0:
+                        self.reaches['reaches']['deposit_upstream']['gsd_wall'] = update_fractions_out(
+                            fractions_in['wall'], qs_kg['wall'], active_volume_wall, 0.21)
 
                     # if the channel incises, expose new fractions in the walls
                     if dz < 0:
@@ -540,7 +549,10 @@ class DepositEvolution:
                     d50, d84 = (2 ** -d50) / 1000, (2 ** -d84) / 1000
                     self.out_df.loc[('deposit_downstream', ts), 'D50'] = d50 * 1000
                     if d50 > 0.002:
-                        active_layer = 7968 * 0.038 ** 2.61 * d50  # from Wilcock 1997
+                        tau_star = (9810 * depth_in * slope) / (1650 * 9.81 * d50)
+                        active_layer = 7968 * tau_star ** 2.61 * d50  # from Wilcock 1997
+                        if active_layer > 2 * d84:
+                            active_layer = 2 * d84
                     else:
                         active_layer = 3 * d50
                     if attributes['elevation'] - active_layer < self.boundary_conditions['min_elev']['deposit_downstream']:
@@ -560,7 +572,7 @@ class DepositEvolution:
                                         -7.0: [0., 0.], -7.5: [0., 0.], -8.0: [0., 0.], -8.5: [0., 0.], -9.0: [0., 0.]},
                                         'wall': {1.0: [0., 0.], 0.0: [0., 0.], -1.0: [0., 0.], -2.0: [0., 0.], -2.5: [0., 0.],
                                         -3.0: [0., 0.], -3.5: [0., 0.], -4.0: [0., 0.], -4.5: [0., 0.],
-                                        -5.0: [0.0, 0.0], -5.5: [0., 0.], -6.0: [0., 0.], -6.5: [0., 0.],
+                                        -5.0: [0., 0.], -5.5: [0., 0.], -6.0: [0., 0.], -6.5: [0., 0.],
                                         -7.0: [0., 0.], -7.5: [0., 0.], -8.0: [0., 0.], -8.5: [0., 0.], -9.0: [0., 0.]}}
                     else:
                         qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval,
@@ -598,10 +610,12 @@ class DepositEvolution:
                     self.out_df.loc[('deposit_downstream', ts), 'width'] = attributes['width'] + dw
 
                     tot_qs_in = {key: qs_in['bed'][key] + qs_in['wall'][key] for key in qs_in['bed'].keys()}
-                    self.reaches['reaches']['deposit_downstream']['gsd_bed'] = update_bed_fractions(
-                        fractions_in['bed'], tot_qs_in, qs_kg['bed'], active_volume, 0.21)
-                    self.reaches['reaches']['deposit_downstream']['gsd_wall'] = update_fractions_out(
-                        fractions_in['wall'], qs_kg['wall'], active_volume_wall, 0.21)
+                    if active_volume > 0:
+                        self.reaches['reaches']['deposit_downstream']['gsd_bed'] = update_bed_fractions(
+                            fractions_in['bed'], tot_qs_in, qs_kg['bed'], active_volume, 0.21)
+                    if active_volume_wall > 0:
+                        self.reaches['reaches']['deposit_downstream']['gsd_wall'] = update_fractions_out(
+                            fractions_in['wall'], qs_kg['wall'], active_volume_wall, 0.21)
 
                     if dz < 0:
                         for size, frac in self.reaches['reaches']['deposit_downstream']['gsd_wall'].items():
@@ -633,7 +647,10 @@ class DepositEvolution:
                     d50, d84 = (2 ** -d50) / 1000, (2 ** -d84) / 1000
                     self.out_df.loc[('downstream', ts), 'D50'] = d50 * 1000
                     if d50 > 0.002:
-                        active_layer = 7968 * 0.038 ** 2.61 * d50  # from Wilcock 1997
+                        tau_star = (9810 * depth_in * slope) / (1650 * 9.81 * d50)
+                        active_layer = 7968 * tau_star ** 2.61 * d50  # from Wilcock 1997
+                        if active_layer > 2 * d84:
+                            active_layer = 2 * d84
                     else:
                         active_layer = 3 * d50
                     if attributes['elevation'] - active_layer < self.boundary_conditions['min_elev']['downstream']:
@@ -643,7 +660,7 @@ class DepositEvolution:
                     if slope < 0:
                         qs_fractions = {1.0: [0., 0.], 0.0: [0., 0.], -1.0: [0., 0.], -2.0: [0., 0.], -2.5: [0., 0.],
                                         -3.0: [0., 0.], -3.5: [0., 0.], -4.0: [0., 0.], -4.5: [0., 0.],
-                                        -5.0: [0.0, 0.0], -5.5: [0., 0.], -6.0: [0., 0.], -6.5: [0., 0.],
+                                        -5.0: [0., 0.], -5.5: [0., 0.], -6.0: [0., 0.], -6.5: [0., 0.],
                                         -7.0: [0., 0.], -7.5: [0., 0.], -8.0: [0., 0.], -8.5: [0., 0.], -9.0: [0., 0.]}
                     else:
                         qs_fractions = transport(fractions, slope, q_in, depth_in, width_in, self.time_interval,
@@ -658,9 +675,6 @@ class DepositEvolution:
                         if frac > qs_in['bed'][size] + qs_in['wall'][size] + max_bed_recr[size]:
                             qs_kg[size] = qs_in['bed'][size] + + qs_in['wall'][size] + max_bed_recr[size]
 
-                    if ts == '5/3/2021 13:00':
-                        print(ts)
-
                     transfer_vals['downstream']['Qs_out'] = qs_kg
                     self.out_df.loc[('downstream', ts), 'yield'] = sum(qs_kg.values())
                     self.reaches['reaches']['downstream']['Qs_in'] = sum(qs_in['bed'].values()) + \
@@ -673,8 +687,9 @@ class DepositEvolution:
                     self.out_df.loc[('downstream', ts), 'elev'] = attributes['elevation'] + dz
 
                     tot_qs_in = {key: qs_in['bed'][key] + qs_in['wall'][key] for key in qs_in['bed'].keys()}
-                    self.reaches['reaches']['downstream']['gsd'] = update_bed_fractions(fractions, tot_qs_in, qs_kg,
-                                                                                        active_volume, 0.21)
+                    if active_volume > 0:
+                        self.reaches['reaches']['downstream']['gsd'] = update_bed_fractions(fractions, tot_qs_in, qs_kg,
+                                                                                            active_volume, 0.21)
 
             if i in [10,50,100,200,500,1000,1500]:
                 self.serialize_timestep(f'../Outputs/{self.reach_name}_{i}.json')
