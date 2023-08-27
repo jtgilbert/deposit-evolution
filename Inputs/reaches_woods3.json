@@ -1,11 +1,11 @@
 {
     "timestep": "",
-    "deposit_mass": 822761,
+    "deposit_mass": 2401711,
     "reaches": {
         "upstream": {
             "flow_scale": 0.78,
-            "elevation": 1747.5043,
-            "length": 50,
+            "elevation": 1746.9702,
+            "length": 47,
             "bankfull_width": 6,
             "lwd_factor": null,
             "gsd": {
@@ -15,8 +15,8 @@
     },
         "deposit_upstream": {
             "flow_scale": 0.79,
-            "elevation": 1747.249,
-            "length":  60.8,
+            "elevation": 1746.5728,
+            "length":  47,
             "width": 1,
             "bankfull_width": 6,
             "lwd_factor": null,
@@ -30,8 +30,8 @@
     },
         "deposit_downstream": {
             "flow_scale": 0.83,
-            "elevation": 1746.115,
-            "length": 50,
+            "elevation": 1746.1028,
+            "length": 47,
             "width": 1,
             "bankfull_width": 6,
             "lwd_factor": null,
@@ -45,8 +45,8 @@
     },
         "downstream": {
             "flow_scale": 0.835,
-            "elevation": 1741.8599,
-            "length": 50,
+            "elevation": 1742.8812,
+            "length": 100,
             "bankfull_width": 6.5,
             "lwd_factor": null,
             "gsd": {
