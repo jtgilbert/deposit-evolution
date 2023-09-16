@@ -4,8 +4,8 @@
     "reaches": {
         "upstream": {
             "flow_scale": 0.78,
-            "elevation": 1746.9702,
-            "length": 47,
+            "elevation": 1746.1185,
+            "length": 50,
             "bankfull_width": 6,
             "lwd_factor": null,
             "gsd": {
@@ -15,8 +15,8 @@
     },
         "deposit_upstream": {
             "flow_scale": 0.79,
-            "elevation": 1746.5728,
-            "length":  47,
+            "elevation": 1746.4,
+            "length":  55,
             "width": 1,
             "bankfull_width": 6,
             "lwd_factor": null,
@@ -30,11 +30,11 @@
     },
         "deposit_downstream": {
             "flow_scale": 0.83,
-            "elevation": 1746.1028,
+            "elevation": 1745.5,
             "length": 47,
             "width": 1,
             "bankfull_width": 6,
-            "lwd_factor": null,
+            "lwd_factor": 1,
             "gsd_bed": {
             },
             "gsd_wall": {
@@ -45,8 +45,8 @@
     },
         "downstream": {
             "flow_scale": 0.835,
-            "elevation": 1742.8812,
-            "length": 100,
+            "elevation": 1741.5018,
+            "length": 65,
             "bankfull_width": 6.5,
             "lwd_factor": null,
             "gsd": {
