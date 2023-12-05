@@ -15,7 +15,7 @@
     },
         "deposit_upstream": {
             "flow_scale": 0.79,
-            "elevation": 1746.4,
+            "elevation": 1746.3,
             "length":  55,
             "width": 1,
             "bankfull_width": 6,
@@ -30,7 +30,7 @@
     },
         "deposit_downstream": {
             "flow_scale": 0.83,
-            "elevation": 1745.5,
+            "elevation": 1745.15,
             "length": 47,
             "width": 1,
             "bankfull_width": 6,
