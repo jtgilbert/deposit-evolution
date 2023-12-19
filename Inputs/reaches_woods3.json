@@ -33,7 +33,7 @@
             "elevation": 1745.15,
             "length": 47,
             "width": 1,
-            "bankfull_width": 6,
+            "bankfull_width": 7.5,
             "lwd_factor": 1,
             "gsd_bed": {
             },
@@ -47,7 +47,7 @@
             "flow_scale": 0.835,
             "elevation": 1741.5018,
             "length": 65,
-            "bankfull_width": 6.5,
+            "bankfull_width": 6,
             "lwd_factor": null,
             "gsd": {
             },
