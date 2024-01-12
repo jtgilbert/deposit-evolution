@@ -19,7 +19,7 @@
             "length":  118,
             "width": 1,
             "bankfull_width": 10.5,
-            "lwd_factor": null,
+            "lwd_factor": 1,
             "gsd_bed": {
             },
             "gsd_wall": {

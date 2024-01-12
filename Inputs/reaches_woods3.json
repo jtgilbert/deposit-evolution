@@ -33,7 +33,7 @@
             "elevation": 1745.15,
             "length": 47,
             "width": 1,
-            "bankfull_width": 7.5,
+            "bankfull_width": 6,
             "lwd_factor": 1,
             "gsd_bed": {
             },

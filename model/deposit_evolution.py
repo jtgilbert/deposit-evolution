@@ -376,7 +376,7 @@ class DepositEvolution:
         self.reaches['reaches'][reach]['gsd_bed'] = self.mass_fracs_to_count(bed_gsd_mass, sum(self.surface_sed[reach].values()))
 
         # new wall gsd
-        min_mass = 0.5 * active_volume_wall * (1 - self.porosity) * 2650
+        min_mass = 1 * active_volume_wall * (1 - self.porosity) * 2650
         repl_mass = max(min_mass - sum(self.bank_sed[reach].values()), 0.25 * sum(self.bank_sed[reach].values()))  # made up 0.25
         store_gsd_mass = {phi: val / sum(self.sed_mass[reach].values()) for phi, val in self.sed_mass[reach].items()}
         for phi, frac in store_gsd_mass.items():
@@ -432,10 +432,10 @@ class DepositEvolution:
                 self.bank_sed[reach][phi] += min(val * recruit_mass, self.sed_mass[reach][phi])
                 self.sed_mass[reach][phi] -= min(val * recruit_mass, self.sed_mass[reach][phi])
 
-    def update_bed_fractions(self, reach, qs_in, qs_out, active_volume, ct_fractions, minimum_frac=None):
+    def update_bed_fractions(self, reach, qs_in, qs_out, active_volume, ct_fractions, minimum_frac=False, conserve=True):
 
-        if not minimum_frac:
-            minimum_frac = 0
+        # if not minimum_frac:
+        #     minimum_frac = 0
 
         # for fixing rounding problems between d_qs and change in storage
         start_store = sum(self.surface_sed[reach].values())
@@ -460,14 +460,14 @@ class DepositEvolution:
         for phi, val in d_qs.items():
             if val < 0:
                 if ct_fractions[phi] != 0.:
-                    if self.surface_sed[reach][phi] > (1 - (minimum_frac / ct_fractions[phi])) * abs(val):
-                        self.surface_sed[reach][phi] += (1 - (minimum_frac / ct_fractions[phi])) * val
+                    if self.surface_sed[reach][phi] > abs(val):
+                        self.surface_sed[reach][phi] += val
                     else:
                         self.surface_sed[reach][phi] = 0.
             else:
                 self.surface_sed[reach][phi] += val
 
-        min_mass = 0.5 * active_volume * (1 - self.porosity) * 2650 # DEFINE SOME MINIMUM MASS - made up 0.5 active vol
+        min_mass = 1 * active_volume * (1 - self.porosity) * 2650 # DEFINE SOME MINIMUM MASS - made up 0.5 active vol
         if sum(self.surface_sed[reach].values()) > 0:
             if sum(self.surface_sed[reach].values()) < min_mass and sum(self.sed_mass[reach].values()) > 0:
                 self.update_surface_sed(reach, min_mass)  # get the mass dif and introduce sed from subsurface based on fractions * mass dif
@@ -524,19 +524,36 @@ class DepositEvolution:
         #         fractions_out_ct[phi] = frac + (to_add / len(add_to))
         # if fractions added are present in deposit, subtract from deposit?
 
-        if minimum_frac:
-            to_remove = 0
-            remove_from = []
-            for phi, frac in fractions_out_ct.items():
-                if frac < minimum_frac:
-                    to_remove += minimum_frac - frac
-                    fractions_out_ct[phi] = minimum_frac
-            for phi, frac in fractions_out_ct.items():
-                if frac > to_remove:
-                    remove_from.append(phi)
-            for phi, frac in fractions_out_ct.items():
-                if phi in remove_from:
-                    fractions_out_ct[phi] = frac - (to_remove / len(remove_from))
+        if minimum_frac is True:
+            mass_ratio = (rem_active_vol * (1 - self.porosity) * 2650) / sum(self.surface_sed[reach].values())
+            if mass_ratio >= 1:  # default 1 but maybe test other vals.
+                min_mass = min([val for val in self.surface_sed[reach].values() if val != 0])
+                for phi, val in self.surface_sed[reach].items():
+                    if phi > -5 and val < min_mass:
+                        if conserve is True:
+                            self.surface_sed[reach][phi] += min(min_mass, self.sed_mass[reach][phi])
+                            self.sed_mass[reach][phi] -= min(min_mass, self.sed_mass[reach][phi])
+                        else:
+                            self.surface_sed[reach][phi] += min_mass
+
+            fractions_out_mass = {phi: val / sum(self.surface_sed[reach].values()) for phi, val in
+                                  self.surface_sed[reach].items()}
+            fractions_out_ct = self.mass_fracs_to_count(fractions_out_mass, sum(self.surface_sed[reach].values()))
+
+            rem_active_vol = sum(self.surface_sed[reach].values()) / ((1 - self.porosity) * 2650)
+
+            # to_remove = 0
+            # remove_from = []
+            # for phi, frac in fractions_out_ct.items():
+            #     if frac < minimum_frac:
+            #         to_remove += minimum_frac - frac
+            #         fractions_out_ct[phi] = minimum_frac
+            # for phi, frac in fractions_out_ct.items():
+            #     if frac > to_remove:
+            #         remove_from.append(phi)
+            # for phi, frac in fractions_out_ct.items():
+            #     if phi in remove_from:
+            #         fractions_out_ct[phi] = frac - (to_remove / len(remove_from))
 
         for key, val in fractions_out_ct.items():
             if val < 0 or val is None:
@@ -623,7 +640,7 @@ class DepositEvolution:
 
         # find the new mass of each fraction and convert to new fractions
 
-        min_mass = 0.5 * active_volume_wall * (1 - self.porosity) * 2650
+        min_mass = 1 * active_volume_wall * (1 - self.porosity) * 2650
         if sum(self.bank_sed[reach].values()) > 0:
             if sum(self.bank_sed[reach].values()) < min_mass:
                 self.update_surface_sed(reach, min_mass=min_mass, recruit=True, bank=True)
@@ -740,7 +757,7 @@ class DepositEvolution:
         self.surface_sed[reach] = {phi: frac * vol * (1 - self.porosity) * 2650 for phi, frac in gsd_vol.items()}
         # remove surface layer masses from storage masses
         for phi, mass in self.surface_sed[reach].items():
-            self.sed_mass[reach][phi] -= mass
+            self.sed_mass[reach][phi] -= min(mass, 0.9*self.sed_mass[reach][phi])
 
         if bank is True:
             self.bank_sed[reach] = {phi: frac * vol * (1 - self.porosity) * 2650 for phi, frac in gsd_vol.items()}
@@ -749,7 +766,7 @@ class DepositEvolution:
 
     def armor_breakup(self, reach, active_vol):
         store_gsd_vol = {phi: val / sum(self.sed_mass[reach].values()) for phi, val in self.sed_mass[reach].items()}
-        dif_vol = max(active_vol - (sum(self.surface_sed[reach].values()) / ((1 - self.porosity) * 2650)), 0.25 * active_vol)  # made up 0.25
+        dif_vol = max(active_vol - (sum(self.surface_sed[reach].values()) / ((1 - self.porosity) * 2650)), 0.5 * active_vol)  # made up 0.25
         for phi, val in store_gsd_vol.items():
             self.surface_sed[reach][phi] += min(val * dif_vol, self.sed_mass[reach][phi])
             self.sed_mass[reach][phi] -= min(val * dif_vol, self.sed_mass[reach][phi])
@@ -850,7 +867,7 @@ class DepositEvolution:
                     qs_kg = {key: val[1] for key, val in qs_fractions.items()}
 
                     d84_phi = round(-np.log2(d50 * 1000) * 2) / 2
-                    if d84_phi <= -5 and qs_kg[d84_phi] > 0:
+                    if d84_phi <= -5 and qs_kg[d84_phi] > 0 and sum(self.sed_mass[reach].values()) > 0:
                         logging.info(f'armor breakup reach: {reach} timestep: {ts} flow: {q_in}')
                         fractions_in, volume_fractions = self.armor_breakup(reach, active_volume)
                         qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval,
@@ -870,7 +887,7 @@ class DepositEvolution:
 
                     # geomorphic change
                     d_qs_bed, d_qs_wall = sediment_calculations(qs_in, qs_kg)
-                    dz = exner(d_qs_bed, attributes['length'], width_in, self.porosity)  # porosity (0.21) from Wu and Wang 2006 Czuba 2018
+                    dz = exner(d_qs_bed, attributes['length'], attributes['bankfull_width'], self.porosity)  # porosity (0.21) from Wu and Wang 2006 Czuba 2018
                     self.reaches['reaches'][reach]['elevation'] = attributes['elevation'] + dz
                     self.out_df.loc[(reach, ts), 'elev'] = attributes['elevation'] + dz
 
@@ -944,7 +961,7 @@ class DepositEvolution:
 
                     # armor breakup
                     d84_phi = round(-np.log2(d50 * 1000) * 2) / 2
-                    if d84_phi <= -5 and qs_kg['bed'][d84_phi] > 0:
+                    if d84_phi <= -5 and qs_kg['bed'][d84_phi] > 0 and sum(self.sed_mass[reach].values()) > 0:
                         logging.info(f'armor breakup reach: {reach} timestep: {ts} flow: {q_in}')
                         fractions_in['bed'], fractions_in_volume['bed'] = self.armor_breakup(reach, active_volume)
                         qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval,
@@ -985,11 +1002,10 @@ class DepositEvolution:
 
                     # update fractions
                     self.reaches['reaches'][reach]['gsd_bed'], active_volume = self.update_bed_fractions(reach,
-                        qs_in, qs_kg['bed'], active_volume, fractions_in['bed'])
+                        qs_in, qs_kg['bed'], active_volume, fractions_in['bed'], minimum_frac=True)
 
-                    if active_volume_wall > 0:
-                        self.reaches['reaches'][reach]['gsd_wall'] = self.update_wall_fractions(reach,
-                            qs_kg['wall'], active_volume_wall, fractions_in['wall'])
+                    self.reaches['reaches'][reach]['gsd_wall'] = self.update_wall_fractions(reach,
+                        qs_kg['wall'], active_volume_wall, fractions_in['wall'])
 
                     # if the channel incises, expose new fractions in the walls
                     # if dz < 0:
@@ -1076,7 +1092,7 @@ class DepositEvolution:
 
                     # checking for armor breakup
                     d84_phi = round(-np.log2(d50 * 1000) * 2) / 2
-                    if d84_phi <= -5 and qs_kg['bed'][d84_phi] > 0:
+                    if d84_phi <= -5 and qs_kg['bed'][d84_phi] > 0 and sum(self.sed_mass[reach].values()) > 0:
                         logging.info(f'armor breakup reach: {reach} timestep: {ts} flow: {q_in}')
                         fractions_in['bed'], fractions_in_volume['bed'] = self.armor_breakup(reach, active_volume)
                         qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval,
@@ -1117,11 +1133,10 @@ class DepositEvolution:
                     # update fractions
                     tot_qs_in = {key: qs_in['bed'][key] + qs_in['wall'][key] for key in qs_in['bed'].keys()}
                     self.reaches['reaches'][reach]['gsd_bed'], active_volume = self.update_bed_fractions(reach,
-                        tot_qs_in, qs_kg['bed'], active_volume, fractions_in['bed'])
+                        tot_qs_in, qs_kg['bed'], active_volume, fractions_in['bed'], minimum_frac=True)
 
-                    if active_volume_wall > 0:
-                        self.reaches['reaches'][reach]['gsd_wall'] = self.update_wall_fractions(reach,
-                            qs_kg['wall'], active_volume_wall, fractions_in['wall'])
+                    self.reaches['reaches'][reach]['gsd_wall'] = self.update_wall_fractions(reach,
+                        qs_kg['wall'], active_volume_wall, fractions_in['wall'])
 
                     # if the channel incises, expose new fractions in the walls
                     # if dz < 0:
@@ -1196,7 +1211,7 @@ class DepositEvolution:
 
                     # check for armor breakup
                     d84_phi = round(-np.log2(d50 * 1000) * 2) / 2
-                    if d84_phi <= -5 and qs_kg[d84_phi] > 0:
+                    if d84_phi <= -5 and qs_kg[d84_phi] > 0 and sum(self.sed_mass[reach].values()) > 0:
                         logging.info(f'armor breakup reach: {reach} timestep: {ts} flow: {q_in}')
                         fractions_in, volume_fractions = self.armor_breakup(reach, active_volume)
                         qs_fractions = transport(fractions_in, slope, q_in, depth_in, width_in, self.time_interval,
@@ -1217,7 +1232,7 @@ class DepositEvolution:
 
                     # geomorphic change
                     d_qs_bed, d_qs_wall = sediment_calculations(qs_in, qs_kg)
-                    dz = exner(d_qs_bed, attributes['length'], width_in, self.porosity)  # porosity from Wu and Wang 2006 Czuba 2018
+                    dz = exner(d_qs_bed, attributes['length'], attributes['bankfull_width'], self.porosity)  # porosity from Wu and Wang 2006 Czuba 2018
                     self.reaches['reaches'][reach]['elevation'] = attributes['elevation'] + dz
                     self.out_df.loc[(reach, ts), 'elev'] = attributes['elevation'] + dz
 
@@ -1259,25 +1274,28 @@ class DepositEvolution:
         self.save_df()
 
 
-b_c = '../Inputs/boundary_conditions_woods3.json'
-r_a = '../Inputs/reaches_woods3.json'
-dis = '../Inputs/Woods_Q_2012_2030_1hr.csv'
+b_c = '../Inputs/boundary_conditions_blodgett.json'
+r_a = '../Inputs/reaches_blodgett.json'
+dis = '../Inputs/Blodgett_Q_2010_2020_1hr.csv'
 t_i = 3600
 whg_woods = [4.688, 0.281]
 dhg_woods = [0.282, 0.406]
 # vhg_woods = [0.687, 0.55]
 vhg_woods = [1.3, 0.3]
-whg_sc = [6.2, 0.103]  # check on this
-dhg_sc = [0.377, 0.39]  # check on this
+whg_sc = [5.072, 0.377]  # check on this
+dhg_sc = [0.23, 0.343]  # check on this
 vhg_sc = [0.95, 0.4]
 
 whg_b = [9.14, 0.18]
 dhg_b = [0.298, 0.143]
 vhg_b = [0.367, 0.675]
 
-r_n = 'Woods'
+whg_rl = [5.213, 0.324]
+dhg_rl = [0.227, 0.386]
 
-measurement_slope = 0.016
+r_n = 'Blodgett'
 
-inst = DepositEvolution(b_c, r_a, dis, t_i, whg_woods, dhg_woods, measurement_slope, r_n)
+measurement_slope = 0.011
+
+inst = DepositEvolution(b_c, r_a, dis, t_i, whg_sc, dhg_sc, measurement_slope, r_n)
 inst.simulation()
